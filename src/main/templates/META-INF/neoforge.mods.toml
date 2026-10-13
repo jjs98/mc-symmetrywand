@@ -1,0 +1,31 @@
+# This is the neoforge.mods.toml file for Symmetry Wand. Placeholder values are expanded at
+# build time from gradle.properties by the generateModMetadata Gradle task.
+modLoader="javafml" #mandatory
+loaderVersion="${loader_version_range}" #mandatory
+
+license="${mod_license}"
+
+[[mods]] #mandatory
+modId="${mod_id}" #mandatory
+version="${mod_version}" #mandatory
+displayName="${mod_name}" #mandatory
+authors="Symmetry Wand Contributors"
+description='''
+Adds a Symmetry Wand that lets players set a mirror plane and build symmetrical
+structures automatically: placing or breaking a block on one side mirrors the
+same action on the other side of the plane.
+'''
+
+[[dependencies.${mod_id}]] #optional
+    modId="neoforge" #mandatory
+    type="required" #mandatory
+    versionRange="[${neo_version},)" #mandatory
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"
