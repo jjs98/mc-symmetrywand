@@ -1,0 +1,5 @@
+{
+  "item.symmetrywand.symmetry_wand": "Symmetry Stab",
+  "item.symmetrywand.symmetry_wand.tooltip": "Rechtsklick auf einen Block, um eine Spiegelungsebene festzulegen. Shift-Rechtsklick, um sie zu konfigurieren. Rechtsklick in die Luft, zum Zurücksetzen.",
+  "config.symmetrywand.title": "Symmetry Stab Konfiguration"
+}

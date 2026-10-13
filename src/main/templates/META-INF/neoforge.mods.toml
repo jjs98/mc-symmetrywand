@@ -9,7 +9,7 @@ license="${mod_license}"
 modId="${mod_id}" #mandatory
 version="${mod_version}" #mandatory
 displayName="${mod_name}" #mandatory
-authors="Symmetry Wand Contributors"
+authors="jjs98"
 description='''
 Adds a Symmetry Wand that lets players set a mirror plane and build symmetrical
 structures automatically: placing or breaking a block on one side mirrors the

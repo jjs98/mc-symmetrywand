@@ -23,8 +23,6 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.level.BlockEvent;
 
-import java.util.List;
-
 /**
  * Mirrors block placement and removal across the active symmetry plane of any Symmetry Wand
  * found in the acting player's inventory. The wand does not need to be held, only carried.
@@ -70,7 +68,7 @@ public final class SymmetryEventHandler {
                 continue;
             }
 
-            BlockState mirroredState = mirrorFacing(placedState, mirror.axes());
+            BlockState mirroredState = mirrorFacing(placedState, mirror);
 
             if (!mirroredState.canSurvive(level, mirrored)) {
                 warn(player, "The mirrored block has no support there - mirrored placement skipped.");
@@ -195,23 +193,42 @@ public final class SymmetryEventHandler {
         return false;
     }
 
-    private static BlockState mirrorFacing(BlockState state, List<Direction.Axis> axes) {
+    private static BlockState mirrorFacing(BlockState state, SymmetryPlane.Mirror mirror) {
         if (!Config.MIRROR_FACING.get()) {
             return state;
         }
         if (state.hasProperty(BlockStateProperties.FACING)) {
-            var facing = state.getValue(BlockStateProperties.FACING);
-            if (axes.contains(facing.getAxis())) {
-                state = state.setValue(BlockStateProperties.FACING, facing.getOpposite());
-            }
+            state = state.setValue(BlockStateProperties.FACING, transformFacing(state.getValue(BlockStateProperties.FACING), mirror));
         }
         if (state.hasProperty(BlockStateProperties.HORIZONTAL_FACING)) {
-            var facing = state.getValue(BlockStateProperties.HORIZONTAL_FACING);
-            if (axes.contains(facing.getAxis())) {
-                state = state.setValue(BlockStateProperties.HORIZONTAL_FACING, facing.getOpposite());
-            }
+            state = state.setValue(BlockStateProperties.HORIZONTAL_FACING, transformFacing(state.getValue(BlockStateProperties.HORIZONTAL_FACING), mirror));
         }
         return state;
+    }
+
+    private static Direction transformFacing(Direction facing, SymmetryPlane.Mirror mirror) {
+        if (mirror.axes().contains(facing.getAxis())) {
+            facing = facing.getOpposite();
+        }
+        if (mirror.diagonal()) {
+            facing = switch (facing) {
+                case NORTH -> Direction.WEST;
+                case WEST -> Direction.NORTH;
+                case SOUTH -> Direction.EAST;
+                case EAST -> Direction.SOUTH;
+                default -> facing;
+            };
+        }
+        if (mirror.antiDiagonal()) {
+            facing = switch (facing) {
+                case NORTH -> Direction.EAST;
+                case EAST -> Direction.NORTH;
+                case SOUTH -> Direction.WEST;
+                case WEST -> Direction.SOUTH;
+                default -> facing;
+            };
+        }
+        return facing;
     }
 
     private static void warn(ServerPlayer player, String message) {

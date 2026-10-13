@@ -102,6 +102,10 @@ public final class SymmetryPlaneRenderer {
             float b = axis == Direction.Axis.Z ? 1f : 0f;
             addPlaneQuad(buffer, matrix, plane, axis, r, g, b);
         }
+        if (plane.axes().octagonal()) {
+            addDiagonalQuad(buffer, matrix, plane, true, 1f, 1f, 0f);
+            addDiagonalQuad(buffer, matrix, plane, false, 1f, 0f, 1f);
+        }
         BufferUploader.drawWithShader(buffer.buildOrThrow());
 
         RenderSystem.depthMask(true);
@@ -145,6 +149,32 @@ public final class SymmetryPlaneRenderer {
     private static void vertex(BufferBuilder buffer, Matrix4f matrix, float x, float y, float z,
                                 float r, float g, float b) {
         buffer.addVertex(matrix, x, y, z).setColor(r, g, b, ALPHA);
+    }
+
+    /** Renders the main (x-z=const) or anti (x+z=const) diagonal plane through its exact center,
+     * which may sit between two diagonally-adjacent blocks rather than centered on one. */
+    private static void addDiagonalQuad(BufferBuilder buffer, Matrix4f matrix, SymmetryPlane plane, boolean main, float r, float g, float b) {
+        float cx = center(plane.sumX());
+        float cy = center(plane.sumY());
+        // for continuous block centers, x - z = (sumX - sumZ) / 2 exactly (the "+1"s from
+        // center() cancel out on subtraction), but x + z = (sumX + sumZ) / 2 + 1 (they add up
+        // instead of canceling) - using the un-adjusted sum here would offset the anti-diagonal
+        // plane by a full block
+        float cz = main
+                ? cx - (plane.sumX() - plane.sumZ()) / 2.0f
+                : (plane.sumX() + plane.sumZ()) / 2.0f + 1f - cx;
+        float half = HALF_SIZE + 0.5f;
+        float dirZ = main ? 1f : -1f;
+
+        float x1 = cx - half;
+        float z1 = cz - half * dirZ;
+        float x2 = cx + half;
+        float z2 = cz + half * dirZ;
+
+        vertex(buffer, matrix, x1, cy - half, z1, r, g, b);
+        vertex(buffer, matrix, x2, cy - half, z2, r, g, b);
+        vertex(buffer, matrix, x2, cy + half, z2, r, g, b);
+        vertex(buffer, matrix, x1, cy + half, z1, r, g, b);
     }
 
     /** The true midpoint of the two selected points along one axis; may be a half-block. */

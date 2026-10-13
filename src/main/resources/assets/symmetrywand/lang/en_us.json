@@ -1,5 +1,5 @@
 {
   "item.symmetrywand.symmetry_wand": "Symmetry Wand",
-  "item.symmetrywand.symmetry_wand.tooltip": "Right-click a block to set a mirror plane. Shift-right-click to rotate it. Right-click air to reset.",
+  "item.symmetrywand.symmetry_wand.tooltip": "Right-click a block to set a mirror plane. Shift-right-click to configure it. Right-click air to reset.",
   "config.symmetrywand.title": "Symmetry Wand Configuration"
 }

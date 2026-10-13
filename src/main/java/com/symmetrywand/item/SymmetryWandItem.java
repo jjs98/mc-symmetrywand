@@ -72,7 +72,12 @@ public class SymmetryWandItem extends Item {
         BlockPos first = pending.pos();
 
         if (clicked.equals(first)) {
-            WandData.set(stack, SymmetryPlane.centeredAt(pending.axes(), clicked));
+            SymmetryPlane plane = SymmetryPlane.centeredAt(pending.axes(), clicked);
+            if (!plane.isOctagonalAligned()) {
+                warn(player, "For octagonal mode, the center must be on a block or exactly between 4 blocks (X and Z must match). Selection canceled.");
+                return InteractionResult.FAIL;
+            }
+            WandData.set(stack, plane);
             info(player, "Symmetry plane set at " + describe(clicked) + " (axes: " + describeAxes(pending.axes()) + ").");
             return InteractionResult.SUCCESS;
         }
@@ -83,7 +88,12 @@ public class SymmetryWandItem extends Item {
             return InteractionResult.FAIL;
         }
 
-        WandData.set(stack, SymmetryPlane.between(pending.axes(), first, clicked));
+        SymmetryPlane plane = SymmetryPlane.between(pending.axes(), first, clicked);
+        if (!plane.isOctagonalAligned()) {
+            warn(player, "For octagonal mode, the center must be on a block or exactly between 4 blocks (X and Z must match). Selection canceled.");
+            return InteractionResult.FAIL;
+        }
+        WandData.set(stack, plane);
         info(player, "Symmetry plane set between " + describe(first) + " and " + describe(clicked)
                 + " (axes: " + describeAxes(pending.axes()) + ").");
         return InteractionResult.SUCCESS;
@@ -148,6 +158,12 @@ public class SymmetryWandItem extends Item {
         }
         if (axes.mirrorZ()) {
             builder.append('Z');
+        }
+        if (axes.octagonal()) {
+            if (!builder.isEmpty()) {
+                builder.append('+');
+            }
+            builder.append("Octagonal");
         }
         return builder.toString();
     }

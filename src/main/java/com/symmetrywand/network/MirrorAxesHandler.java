@@ -22,7 +22,7 @@ public final class MirrorAxesHandler {
         if (!(context.player() instanceof ServerPlayer player)) {
             return;
         }
-        AxisSelection axes = new AxisSelection(payload.mirrorX(), payload.mirrorY(), payload.mirrorZ());
+        AxisSelection axes = new AxisSelection(payload.mirrorX(), payload.mirrorY(), payload.mirrorZ(), payload.octagonal());
         if (!axes.hasAny()) {
             return;
         }
@@ -35,7 +35,18 @@ public final class MirrorAxesHandler {
         WandData.setAxes(stack, axes);
         SymmetryPlane plane = WandData.get(stack);
         if (plane != null) {
-            WandData.set(stack, plane.withAxes(axes));
+            SymmetryPlane updated = plane.withAxes(axes);
+            if (!updated.isOctagonalAligned()) {
+                WandData.clear(stack);
+                if (Config.CHAT_FEEDBACK.get()) {
+                    player.sendSystemMessage(Component.literal(
+                            "Axis preference saved, but the current plane's center isn't aligned for octagonal mode "
+                                    + "(X and Z must both be on a block or both exactly between 4 blocks) - plane reset, set a new one.")
+                            .withStyle(ChatFormatting.RED));
+                }
+                return;
+            }
+            WandData.set(stack, updated);
         }
 
         if (Config.CHAT_FEEDBACK.get()) {

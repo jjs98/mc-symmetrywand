@@ -26,15 +26,20 @@ public record SymmetryPlane(AxisSelection axes, int sumX, int sumY, int sumZ) {
         return new SymmetryPlane(axes, a.getX() + b.getX(), a.getY() + b.getY(), a.getZ() + b.getZ());
     }
 
-    /** A mirrored position together with exactly which axes were reflected to produce it. */
-    public record Mirror(BlockPos pos, List<Direction.Axis> axes) {
+    /** A mirrored position together with exactly which reflections were applied to produce it. */
+    public record Mirror(BlockPos pos, List<Direction.Axis> axes, boolean diagonal, boolean antiDiagonal) {
     }
 
-    /** Every mirrored position of {@code pos} across each non-empty combination of the active axes (excludes {@code pos} itself). */
+    /** Every mirrored position of {@code pos} across each non-empty combination of the active axes
+     * and, if {@code axes.octagonal()}, the two diagonal reflections through the anchor (excludes {@code pos} itself). */
     public List<Mirror> mirroredPositions(BlockPos pos) {
         List<Direction.Axis> activeAxes = activeAxes();
-        int combinations = 1 << activeAxes.size();
-        List<Mirror> result = new ArrayList<>(combinations - 1);
+        boolean octagonal = axes.octagonal();
+        int diagonalBit = activeAxes.size();
+        int antiDiagonalBit = activeAxes.size() + 1;
+        int generatorCount = activeAxes.size() + (octagonal ? 2 : 0);
+        int combinations = 1 << generatorCount;
+        List<Mirror> result = new ArrayList<>(Math.max(0, combinations - 1));
         for (int mask = 1; mask < combinations; mask++) {
             BlockPos mirrored = pos;
             List<Direction.Axis> applied = new ArrayList<>(activeAxes.size());
@@ -45,24 +50,41 @@ public record SymmetryPlane(AxisSelection axes, int sumX, int sumY, int sumZ) {
                     applied.add(axis);
                 }
             }
-            result.add(new Mirror(mirrored, applied));
+            boolean diagonal = octagonal && (mask & (1 << diagonalBit)) != 0;
+            boolean antiDiagonal = octagonal && (mask & (1 << antiDiagonalBit)) != 0;
+            if (diagonal) {
+                mirrored = mirrorDiagonal(mirrored);
+            }
+            if (antiDiagonal) {
+                mirrored = mirrorAntiDiagonal(mirrored);
+            }
+            result.add(new Mirror(mirrored, applied, diagonal, antiDiagonal));
         }
         return result;
     }
 
-    /** Same as {@link #mirroredPositions}, but merges duplicate target positions (and their
-     * axes) into one entry, and excludes {@code pos} itself. */
+    /** Same as {@link #mirroredPositions}, but merges duplicate target positions (and the
+     * reflections used to reach them) into one entry, and excludes {@code pos} itself. */
     public List<Mirror> distinctMirroredPositions(BlockPos pos) {
-        LinkedHashMap<BlockPos, EnumSet<Direction.Axis>> merged = new LinkedHashMap<>();
+        LinkedHashMap<BlockPos, MergedMirror> merged = new LinkedHashMap<>();
         for (Mirror mirror : mirroredPositions(pos)) {
             if (mirror.pos().equals(pos)) {
                 continue;
             }
-            merged.computeIfAbsent(mirror.pos(), p -> EnumSet.noneOf(Direction.Axis.class)).addAll(mirror.axes());
+            MergedMirror entry = merged.computeIfAbsent(mirror.pos(), p -> new MergedMirror());
+            entry.axes.addAll(mirror.axes());
+            entry.diagonal |= mirror.diagonal();
+            entry.antiDiagonal |= mirror.antiDiagonal();
         }
         List<Mirror> result = new ArrayList<>(merged.size());
-        merged.forEach((p, axesSet) -> result.add(new Mirror(p, new ArrayList<>(axesSet))));
+        merged.forEach((p, entry) -> result.add(new Mirror(p, new ArrayList<>(entry.axes), entry.diagonal, entry.antiDiagonal)));
         return result;
+    }
+
+    private static final class MergedMirror {
+        final EnumSet<Direction.Axis> axes = EnumSet.noneOf(Direction.Axis.class);
+        boolean diagonal;
+        boolean antiDiagonal;
     }
 
     public BlockPos mirrorAxis(BlockPos pos, Direction.Axis axis) {
@@ -72,6 +94,28 @@ public record SymmetryPlane(AxisSelection axes, int sumX, int sumY, int sumZ) {
             case Y -> new BlockPos(pos.getX(), mirroredCoord, pos.getZ());
             case Z -> new BlockPos(pos.getX(), pos.getY(), mirroredCoord);
         };
+    }
+
+    /** Octagonal's diagonal mirrors only land exactly on blocks when the X and Z centers are
+     * both block-centered or both boundary-centered (same parity); otherwise they'd be off by
+     * half a block (see mirrorDiagonal/mirrorAntiDiagonal). Irrelevant if octagonal is off. */
+    public boolean isOctagonalAligned() {
+        return !axes.octagonal() || (sumX - sumZ) % 2 == 0;
+    }
+
+    /** Reflects across the diagonal line x - z = const (swaps X/Z offsets); const is derived from
+     * sumX and sumZ the same way axisSum drives axis mirrors, so this can sit between two
+     * diagonally-adjacent blocks too, not just centered on one. When sumX and sumZ have different
+     * parity there's no exact integer solution, so the nearest one is used (floorDiv). */
+    public BlockPos mirrorDiagonal(BlockPos pos) {
+        int diagonalConstant = Math.floorDiv(sumX - sumZ, 2);
+        return new BlockPos(diagonalConstant + pos.getZ(), pos.getY(), pos.getX() - diagonalConstant);
+    }
+
+    /** Reflects across the diagonal line x - z = -(z) i.e. x + z = const; see {@link #mirrorDiagonal}. */
+    public BlockPos mirrorAntiDiagonal(BlockPos pos) {
+        int antiDiagonalConstant = Math.floorDiv(sumX + sumZ, 2);
+        return new BlockPos(antiDiagonalConstant - pos.getZ(), pos.getY(), antiDiagonalConstant - pos.getX());
     }
 
     public List<Direction.Axis> activeAxes() {

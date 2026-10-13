@@ -16,6 +16,7 @@ public class MirrorAxesScreen extends Screen {
     private boolean mirrorX;
     private boolean mirrorY;
     private boolean mirrorZ;
+    private boolean octagonal;
     private Button saveButton;
 
     public MirrorAxesScreen(AxisSelection initial, boolean mainHand) {
@@ -23,13 +24,14 @@ public class MirrorAxesScreen extends Screen {
         this.mirrorX = initial.mirrorX();
         this.mirrorY = initial.mirrorY();
         this.mirrorZ = initial.mirrorZ();
+        this.octagonal = initial.octagonal();
         this.mainHand = mainHand;
     }
 
     @Override
     protected void init() {
         int centerX = this.width / 2;
-        int top = this.height / 2 - 50;
+        int top = this.height / 2 - 60;
 
         addRenderableWidget(Checkbox.builder(Component.literal("Mirror X"), this.font)
                 .pos(centerX - 50, top)
@@ -49,8 +51,14 @@ public class MirrorAxesScreen extends Screen {
                 .onValueChange((checkbox, value) -> onAxisChanged(() -> mirrorZ = value))
                 .build());
 
+        addRenderableWidget(Checkbox.builder(Component.literal("Octagonal"), this.font)
+                .pos(centerX - 50, top + 72)
+                .selected(octagonal)
+                .onValueChange((checkbox, value) -> onAxisChanged(() -> octagonal = value))
+                .build());
+
         saveButton = Button.builder(Component.literal("Save"), button -> save())
-                .pos(centerX - 50, top + 80)
+                .pos(centerX - 50, top + 104)
                 .size(100, 20)
                 .build();
         saveButton.active = hasAnyAxis();
@@ -63,21 +71,21 @@ public class MirrorAxesScreen extends Screen {
     }
 
     private boolean hasAnyAxis() {
-        return mirrorX || mirrorY || mirrorZ;
+        return mirrorX || mirrorY || mirrorZ || octagonal;
     }
 
     private void save() {
         if (!hasAnyAxis()) {
             return;
         }
-        PacketDistributor.sendToServer(new MirrorAxesPayload(mirrorX, mirrorY, mirrorZ, mainHand));
+        PacketDistributor.sendToServer(new MirrorAxesPayload(mirrorX, mirrorY, mirrorZ, octagonal, mainHand));
         onClose();
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
-        graphics.drawCenteredString(this.font, this.title, this.width / 2, this.height / 2 - 70, 0xFFFFFF);
+        graphics.drawCenteredString(this.font, this.title, this.width / 2, this.height / 2 - 80, 0xFFFFFF);
     }
 
     @Override
