@@ -7,6 +7,7 @@ import com.symmetrywand.symmetry.SymmetryPlane;
 import com.symmetrywand.symmetry.WandData;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -21,6 +22,8 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.level.BlockEvent;
+
+import java.util.List;
 
 /**
  * Mirrors block placement and removal across the active symmetry plane of any Symmetry Wand
@@ -47,37 +50,43 @@ public final class SymmetryEventHandler {
         }
 
         BlockPos original = event.getPos();
-        BlockPos mirrored = plane.mirror(original);
-        if (mirrored.equals(original) || !withinRange(plane, original, mirrored)) {
-            return;
-        }
-
-        if (!player.isCreative() && isOccupied(level.getBlockState(mirrored))) {
-            warn(player, "The mirrored position is occupied - mirrored placement skipped.");
-            return;
-        }
-
         BlockState placedState = event.getPlacedBlock();
-        BlockState mirroredState = mirrorFacing(placedState, plane);
+        Item item = placedState.getBlock().asItem();
+        ItemStack placingStack = player.getMainHandItem().getItem() == item
+                ? player.getMainHandItem()
+                : player.getOffhandItem();
+        // tracks units already promised to earlier mirrors in this same event, so multiple
+        // mirrored copies can't each independently "claim" the same single spare unit
+        int[] reservedFromPlacingStack = {0};
 
-        if (!mirroredState.canSurvive(level, mirrored)) {
-            warn(player, "The mirrored block has no support there - mirrored placement skipped.");
-            return;
-        }
-
-        if (Config.REQUIRE_RESOURCES_IN_SURVIVAL.get() && !player.isCreative()) {
-            Item item = placedState.getBlock().asItem();
-            ItemStack placingStack = player.getMainHandItem().getItem() == item
-                    ? player.getMainHandItem()
-                    : player.getOffhandItem();
-            if (item == Items.AIR || !consumeItem(level, player, item, placingStack)) {
-                // leave the original placement untouched; only the mirrored copy is skipped
-                warn(player, "Not enough resources to mirror this block - mirrored placement skipped.");
-                return;
+        for (SymmetryPlane.Mirror mirror : plane.distinctMirroredPositions(original)) {
+            BlockPos mirrored = mirror.pos();
+            if (!withinRange(plane, original, mirrored)) {
+                continue;
             }
-        }
 
-        level.setBlockAndUpdate(mirrored, mirroredState);
+            if (!player.isCreative() && isOccupied(level.getBlockState(mirrored))) {
+                warn(player, "The mirrored position is occupied - mirrored placement skipped.");
+                continue;
+            }
+
+            BlockState mirroredState = mirrorFacing(placedState, mirror.axes());
+
+            if (!mirroredState.canSurvive(level, mirrored)) {
+                warn(player, "The mirrored block has no support there - mirrored placement skipped.");
+                continue;
+            }
+
+            if (Config.REQUIRE_RESOURCES_IN_SURVIVAL.get() && !player.isCreative()) {
+                if (item == Items.AIR || !consumeItem(level, player, item, placingStack, reservedFromPlacingStack)) {
+                    // leave the original placement untouched; only this mirrored copy is skipped
+                    warn(player, "Not enough resources to mirror this block - mirrored placement skipped.");
+                    continue;
+                }
+            }
+
+            level.setBlockAndUpdate(mirrored, mirroredState);
+        }
     }
 
     @SubscribeEvent
@@ -96,21 +105,25 @@ public final class SymmetryEventHandler {
         }
 
         BlockPos original = event.getPos();
-        BlockPos mirrored = plane.mirror(original);
-        if (mirrored.equals(original) || !withinRange(plane, original, mirrored)) {
-            return;
-        }
-        BlockState mirroredState = level.getBlockState(mirrored);
-        if (mirroredState.isAir() || mirroredState.getBlock() != event.getState().getBlock()) {
-            return;
-        }
+        Block originalBlock = event.getState().getBlock();
 
-        if (!player.isCreative()) {
-            BlockEntity blockEntity = mirroredState.hasBlockEntity() ? level.getBlockEntity(mirrored) : null;
-            // drop at the block the player is actively mining, not the mirrored one
-            Block.dropResources(mirroredState, level, original, blockEntity, player, player.getMainHandItem());
+        for (SymmetryPlane.Mirror mirror : plane.distinctMirroredPositions(original)) {
+            BlockPos mirrored = mirror.pos();
+            if (!withinRange(plane, original, mirrored)) {
+                continue;
+            }
+            BlockState mirroredState = level.getBlockState(mirrored);
+            if (mirroredState.isAir() || mirroredState.getBlock() != originalBlock) {
+                continue;
+            }
+
+            if (!player.isCreative()) {
+                BlockEntity blockEntity = mirroredState.hasBlockEntity() ? level.getBlockEntity(mirrored) : null;
+                // drop at the block the player is actively mining, not the mirrored one
+                Block.dropResources(mirroredState, level, original, blockEntity, player, player.getMainHandItem());
+            }
+            level.destroyBlock(mirrored, false, player);
         }
-        level.destroyBlock(mirrored, false, player);
     }
 
     private static boolean withinRange(SymmetryPlane plane, BlockPos original, BlockPos mirrored) {
@@ -150,7 +163,7 @@ public final class SymmetryEventHandler {
         return WandData.get(stack);
     }
 
-    private static boolean consumeItem(ServerLevel level, ServerPlayer player, Item item, ItemStack placingStack) {
+    private static boolean consumeItem(ServerLevel level, ServerPlayer player, Item item, ItemStack placingStack, int[] reservedFromPlacingStack) {
         for (ItemStack stack : player.getInventory().items) {
             // NeoForge's onPlaceItemIntoWorld always resets the placing stack's count right after
             // this event, discarding any shrink applied to that exact object - so an immediate
@@ -165,9 +178,12 @@ public final class SymmetryEventHandler {
         }
 
         // no separate stack has stock; the placing stack can still pay if it has a spare unit
-        // beyond the one vanilla is about to consume for the original block. That extra shrink
+        // beyond the one vanilla is about to consume for the original block, and beyond any
+        // units already promised to earlier mirrors of this same placement. That extra shrink
         // must be deferred until after NeoForge's own reset of this stack has already happened.
-        if (!placingStack.isEmpty() && placingStack.getItem() == item && placingStack.getCount() >= 2) {
+        if (!placingStack.isEmpty() && placingStack.getItem() == item
+                && placingStack.getCount() - 1 - reservedFromPlacingStack[0] >= 1) {
+            reservedFromPlacingStack[0]++;
             level.getServer().execute(() -> {
                 if (!placingStack.isEmpty() && placingStack.getItem() == item) {
                     placingStack.shrink(1);
@@ -179,19 +195,19 @@ public final class SymmetryEventHandler {
         return false;
     }
 
-    private static BlockState mirrorFacing(BlockState state, SymmetryPlane plane) {
+    private static BlockState mirrorFacing(BlockState state, List<Direction.Axis> axes) {
         if (!Config.MIRROR_FACING.get()) {
             return state;
         }
         if (state.hasProperty(BlockStateProperties.FACING)) {
             var facing = state.getValue(BlockStateProperties.FACING);
-            if (facing.getAxis() == plane.axis()) {
+            if (axes.contains(facing.getAxis())) {
                 state = state.setValue(BlockStateProperties.FACING, facing.getOpposite());
             }
         }
         if (state.hasProperty(BlockStateProperties.HORIZONTAL_FACING)) {
             var facing = state.getValue(BlockStateProperties.HORIZONTAL_FACING);
-            if (facing.getAxis() == plane.axis()) {
+            if (axes.contains(facing.getAxis())) {
                 state = state.setValue(BlockStateProperties.HORIZONTAL_FACING, facing.getOpposite());
             }
         }

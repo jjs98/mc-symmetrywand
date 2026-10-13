@@ -1,6 +1,8 @@
 package com.symmetrywand.item;
 
+import com.symmetrywand.client.ClientWandActions;
 import com.symmetrywand.config.Config;
+import com.symmetrywand.symmetry.AxisSelection;
 import com.symmetrywand.symmetry.SymmetryPlane;
 import com.symmetrywand.symmetry.WandData;
 import net.minecraft.ChatFormatting;
@@ -34,7 +36,16 @@ public class SymmetryWandItem extends Item {
     @Override
     public InteractionResult useOn(UseOnContext context) {
         Level level = context.getLevel();
-        if (level.isClientSide() || !(context.getPlayer() instanceof ServerPlayer player)) {
+        Player contextPlayer = context.getPlayer();
+
+        if (contextPlayer != null && contextPlayer.isShiftKeyDown()) {
+            if (level.isClientSide()) {
+                ClientWandActions.openMirrorAxesScreen(context.getItemInHand(), context.getHand());
+            }
+            return InteractionResult.SUCCESS;
+        }
+
+        if (level.isClientSide() || !(contextPlayer instanceof ServerPlayer player)) {
             return InteractionResult.SUCCESS;
         }
 
@@ -47,18 +58,13 @@ public class SymmetryWandItem extends Item {
             return InteractionResult.FAIL;
         }
 
-        if (player.isShiftKeyDown()) {
-            cycleOrientation(player, stack);
-            return InteractionResult.SUCCESS;
-        }
-
         WandData.PendingPoint pending = WandData.getPending(stack);
 
         if (pending == null) {
-            Direction.Axis axis = WandData.getAxis(stack);
-            WandData.setPending(stack, axis, clicked);
+            AxisSelection axes = WandData.getAxes(stack);
+            WandData.setPending(stack, axes, clicked);
             info(player, "First point set at " + describe(clicked)
-                    + " (axis: " + axis.getName().toUpperCase() + "). Right-click another block to set the plane between them, or click into the air to cancel.");
+                    + " (axes: " + describeAxes(axes) + "). Right-click another block to set the plane between them, or click into the air to cancel.");
             return InteractionResult.SUCCESS;
         }
 
@@ -66,8 +72,8 @@ public class SymmetryWandItem extends Item {
         BlockPos first = pending.pos();
 
         if (clicked.equals(first)) {
-            WandData.set(stack, SymmetryPlane.centeredAt(pending.axis(), clicked));
-            info(player, "Symmetry plane set at " + describe(clicked) + " (axis: " + pending.axis().getName().toUpperCase() + ").");
+            WandData.set(stack, SymmetryPlane.centeredAt(pending.axes(), clicked));
+            info(player, "Symmetry plane set at " + describe(clicked) + " (axes: " + describeAxes(pending.axes()) + ").");
             return InteractionResult.SUCCESS;
         }
 
@@ -77,21 +83,24 @@ public class SymmetryWandItem extends Item {
             return InteractionResult.FAIL;
         }
 
-        WandData.set(stack, SymmetryPlane.between(pending.axis(), first, clicked));
+        WandData.set(stack, SymmetryPlane.between(pending.axes(), first, clicked));
         info(player, "Symmetry plane set between " + describe(first) + " and " + describe(clicked)
-                + " (axis: " + pending.axis().getName().toUpperCase() + ").");
+                + " (axes: " + describeAxes(pending.axes()) + ").");
         return InteractionResult.SUCCESS;
     }
 
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player playerEntity, InteractionHand hand) {
         ItemStack stack = playerEntity.getItemInHand(hand);
-        if (level.isClientSide() || !(playerEntity instanceof ServerPlayer player)) {
+
+        if (playerEntity.isShiftKeyDown()) {
+            if (level.isClientSide()) {
+                ClientWandActions.openMirrorAxesScreen(stack, hand);
+            }
             return InteractionResultHolder.success(stack);
         }
 
-        if (player.isShiftKeyDown()) {
-            cycleOrientation(player, stack);
+        if (level.isClientSide() || !(playerEntity instanceof ServerPlayer player)) {
             return InteractionResultHolder.success(stack);
         }
 
@@ -114,7 +123,7 @@ public class SymmetryWandItem extends Item {
     @Override
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
         tooltip.add(Component.translatable("item.symmetrywand.symmetry_wand.tooltip").withStyle(ChatFormatting.GRAY));
-        tooltip.add(Component.literal("Axis: " + WandData.getAxis(stack).getName().toUpperCase()).withStyle(ChatFormatting.DARK_GRAY));
+        tooltip.add(Component.literal("Axes: " + describeAxes(WandData.getAxes(stack))).withStyle(ChatFormatting.DARK_GRAY));
         SymmetryPlane plane = WandData.get(stack);
         if (plane != null) {
             tooltip.add(Component.literal("Plane @ " + describePlanePosition(plane)).withStyle(ChatFormatting.DARK_GRAY));
@@ -125,31 +134,34 @@ public class SymmetryWandItem extends Item {
         }
     }
 
-    private void cycleOrientation(ServerPlayer player, ItemStack stack) {
-        Direction.Axis newAxis = SymmetryPlane.cycle(WandData.getAxis(stack));
-        WandData.setAxis(stack, newAxis);
-
-        SymmetryPlane plane = WandData.get(stack);
-        if (plane != null) {
-            WandData.set(stack, plane.withAxis(newAxis));
-        }
-
-        info(player, "Symmetry wand orientation changed to axis " + newAxis.getName().toUpperCase() + ".");
-    }
-
     private static String describe(BlockPos pos) {
         return pos.getX() + ", " + pos.getY() + ", " + pos.getZ();
     }
 
-    /** Shows the anchor's two non-plane coordinates plus the exact (possibly half-block) plane coordinate. */
+    private static String describeAxes(AxisSelection axes) {
+        StringBuilder builder = new StringBuilder();
+        if (axes.mirrorX()) {
+            builder.append('X');
+        }
+        if (axes.mirrorY()) {
+            builder.append('Y');
+        }
+        if (axes.mirrorZ()) {
+            builder.append('Z');
+        }
+        return builder.toString();
+    }
+
+    /** Shows the exact (possibly half-block) plane coordinate for each active axis, near the anchor. */
     private static String describePlanePosition(SymmetryPlane plane) {
-        double planeCoord = plane.planeCoord();
-        BlockPos a = plane.anchor();
-        return switch (plane.axis()) {
-            case X -> planeCoord + ", " + a.getY() + ", " + a.getZ();
-            case Y -> a.getX() + ", " + planeCoord + ", " + a.getZ();
-            case Z -> a.getX() + ", " + a.getY() + ", " + planeCoord;
-        };
+        StringBuilder builder = new StringBuilder();
+        for (Direction.Axis axis : plane.activeAxes()) {
+            if (!builder.isEmpty()) {
+                builder.append(", ");
+            }
+            builder.append(axis.getName().toUpperCase()).append('=').append(plane.planeCoord(axis));
+        }
+        return builder + " (near " + describe(plane.anchor()) + ")";
     }
 
     private static double distance(BlockPos a, BlockPos b) {

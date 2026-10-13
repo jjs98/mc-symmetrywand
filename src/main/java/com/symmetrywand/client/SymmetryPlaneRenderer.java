@@ -13,6 +13,7 @@ import com.symmetrywand.symmetry.SymmetryPlane;
 import com.symmetrywand.symmetry.WandData;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.core.Direction;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
@@ -23,9 +24,9 @@ import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import org.joml.Matrix4f;
 
 /**
- * Draws a translucent, axis-colored sheet over the active symmetry plane of any Symmetry Wand
- * carried in the player's inventory (red = X axis, green = Y axis, blue = Z axis), so its
- * position and orientation are visible in the world. The wand does not need to be held.
+ * Draws a translucent, axis-colored sheet for each active axis of any Symmetry Wand carried in
+ * the player's inventory (red = X axis, green = Y axis, blue = Z axis), so the plane(s) position
+ * and orientation are visible in the world. The wand does not need to be held.
  */
 @EventBusSubscriber(modid = SymmetryWandMod.MODID, value = Dist.CLIENT)
 public final class SymmetryPlaneRenderer {
@@ -87,15 +88,6 @@ public final class SymmetryPlaneRenderer {
     }
 
     private static void renderPlane(PoseStack poseStack, SymmetryPlane plane) {
-        float r = 0f;
-        float g = 0f;
-        float b = 0f;
-        switch (plane.axis()) {
-            case X -> r = 1f;
-            case Y -> g = 1f;
-            case Z -> b = 1f;
-        }
-
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
@@ -104,7 +96,12 @@ public final class SymmetryPlaneRenderer {
 
         Matrix4f matrix = poseStack.last().pose();
         BufferBuilder buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        addPlaneQuad(buffer, matrix, plane, r, g, b);
+        for (Direction.Axis axis : plane.activeAxes()) {
+            float r = axis == Direction.Axis.X ? 1f : 0f;
+            float g = axis == Direction.Axis.Y ? 1f : 0f;
+            float b = axis == Direction.Axis.Z ? 1f : 0f;
+            addPlaneQuad(buffer, matrix, plane, axis, r, g, b);
+        }
         BufferUploader.drawWithShader(buffer.buildOrThrow());
 
         RenderSystem.depthMask(true);
@@ -112,7 +109,7 @@ public final class SymmetryPlaneRenderer {
         RenderSystem.disableBlend();
     }
 
-    private static void addPlaneQuad(BufferBuilder buffer, Matrix4f matrix, SymmetryPlane plane, float r, float g, float b) {
+    private static void addPlaneQuad(BufferBuilder buffer, Matrix4f matrix, SymmetryPlane plane, Direction.Axis axis, float r, float g, float b) {
         float cx = center(plane.sumX());
         float cy = center(plane.sumY());
         float cz = center(plane.sumZ());
@@ -120,7 +117,7 @@ public final class SymmetryPlaneRenderer {
         float lo = -half;
         float hi = half;
 
-        switch (plane.axis()) {
+        switch (axis) {
             case X -> {
                 float planeCoord = cx;
                 vertex(buffer, matrix, planeCoord, cy + lo, cz + lo, r, g, b);

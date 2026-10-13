@@ -1,7 +1,6 @@
 package com.symmetrywand.symmetry;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.ItemStack;
@@ -15,18 +14,24 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class WandData {
 
-    private static final String TAG_AXIS = "SymmetryAxis";
+    private static final String TAG_MIRROR_X = "SymmetryMirrorX";
+    private static final String TAG_MIRROR_Y = "SymmetryMirrorY";
+    private static final String TAG_MIRROR_Z = "SymmetryMirrorZ";
     private static final String TAG_SUM_X = "SymmetrySumX";
     private static final String TAG_SUM_Y = "SymmetrySumY";
     private static final String TAG_SUM_Z = "SymmetrySumZ";
 
-    private static final String TAG_PENDING_AXIS = "PendingAxis";
+    private static final String TAG_PENDING = "Pending";
+    private static final String TAG_PENDING_MIRROR_X = "PendingMirrorX";
+    private static final String TAG_PENDING_MIRROR_Y = "PendingMirrorY";
+    private static final String TAG_PENDING_MIRROR_Z = "PendingMirrorZ";
     private static final String TAG_PENDING_X = "PendingX";
     private static final String TAG_PENDING_Y = "PendingY";
     private static final String TAG_PENDING_Z = "PendingZ";
 
-    private static final String TAG_WAND_AXIS = "WandAxis";
-    private static final Direction.Axis DEFAULT_AXIS = Direction.Axis.X;
+    private static final String TAG_WAND_MIRROR_X = "WandMirrorX";
+    private static final String TAG_WAND_MIRROR_Y = "WandMirrorY";
+    private static final String TAG_WAND_MIRROR_Z = "WandMirrorZ";
 
     private WandData() {
     }
@@ -38,20 +43,17 @@ public final class WandData {
             return null;
         }
         CompoundTag tag = data.copyTag();
-        if (!tag.contains(TAG_AXIS)) {
+        if (!tag.contains(TAG_SUM_X)) {
             return null;
         }
-        Direction.Axis axis = Direction.Axis.byName(tag.getString(TAG_AXIS));
-        if (axis == null) {
-            return null;
-        }
-        return new SymmetryPlane(axis, tag.getInt(TAG_SUM_X), tag.getInt(TAG_SUM_Y), tag.getInt(TAG_SUM_Z));
+        AxisSelection axes = readAxes(tag, TAG_MIRROR_X, TAG_MIRROR_Y, TAG_MIRROR_Z);
+        return new SymmetryPlane(axes, tag.getInt(TAG_SUM_X), tag.getInt(TAG_SUM_Y), tag.getInt(TAG_SUM_Z));
     }
 
     public static void set(ItemStack stack, SymmetryPlane plane) {
         stack.update(DataComponents.CUSTOM_DATA, CustomData.EMPTY, data -> {
             CompoundTag tag = data.copyTag();
-            tag.putString(TAG_AXIS, plane.axis().getName());
+            writeAxes(tag, TAG_MIRROR_X, TAG_MIRROR_Y, TAG_MIRROR_Z, plane.axes());
             tag.putInt(TAG_SUM_X, plane.sumX());
             tag.putInt(TAG_SUM_Y, plane.sumY());
             tag.putInt(TAG_SUM_Z, plane.sumZ());
@@ -65,7 +67,9 @@ public final class WandData {
             return;
         }
         CompoundTag tag = data.copyTag();
-        tag.remove(TAG_AXIS);
+        tag.remove(TAG_MIRROR_X);
+        tag.remove(TAG_MIRROR_Y);
+        tag.remove(TAG_MIRROR_Z);
         tag.remove(TAG_SUM_X);
         tag.remove(TAG_SUM_Y);
         tag.remove(TAG_SUM_Z);
@@ -73,7 +77,7 @@ public final class WandData {
     }
 
     /** The first point clicked while setting a plane between two blocks, awaiting a second click. */
-    public record PendingPoint(Direction.Axis axis, BlockPos pos) {
+    public record PendingPoint(AxisSelection axes, BlockPos pos) {
     }
 
     @Nullable
@@ -83,21 +87,19 @@ public final class WandData {
             return null;
         }
         CompoundTag tag = data.copyTag();
-        if (!tag.contains(TAG_PENDING_AXIS)) {
+        if (!tag.contains(TAG_PENDING)) {
             return null;
         }
-        Direction.Axis axis = Direction.Axis.byName(tag.getString(TAG_PENDING_AXIS));
-        if (axis == null) {
-            return null;
-        }
+        AxisSelection axes = readAxes(tag, TAG_PENDING_MIRROR_X, TAG_PENDING_MIRROR_Y, TAG_PENDING_MIRROR_Z);
         BlockPos pos = new BlockPos(tag.getInt(TAG_PENDING_X), tag.getInt(TAG_PENDING_Y), tag.getInt(TAG_PENDING_Z));
-        return new PendingPoint(axis, pos);
+        return new PendingPoint(axes, pos);
     }
 
-    public static void setPending(ItemStack stack, Direction.Axis axis, BlockPos pos) {
+    public static void setPending(ItemStack stack, AxisSelection axes, BlockPos pos) {
         stack.update(DataComponents.CUSTOM_DATA, CustomData.EMPTY, data -> {
             CompoundTag tag = data.copyTag();
-            tag.putString(TAG_PENDING_AXIS, axis.getName());
+            tag.putBoolean(TAG_PENDING, true);
+            writeAxes(tag, TAG_PENDING_MIRROR_X, TAG_PENDING_MIRROR_Y, TAG_PENDING_MIRROR_Z, axes);
             tag.putInt(TAG_PENDING_X, pos.getX());
             tag.putInt(TAG_PENDING_Y, pos.getY());
             tag.putInt(TAG_PENDING_Z, pos.getZ());
@@ -111,30 +113,44 @@ public final class WandData {
             return;
         }
         CompoundTag tag = data.copyTag();
-        tag.remove(TAG_PENDING_AXIS);
+        tag.remove(TAG_PENDING);
+        tag.remove(TAG_PENDING_MIRROR_X);
+        tag.remove(TAG_PENDING_MIRROR_Y);
+        tag.remove(TAG_PENDING_MIRROR_Z);
         tag.remove(TAG_PENDING_X);
         tag.remove(TAG_PENDING_Y);
         tag.remove(TAG_PENDING_Z);
         stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
     }
 
-    /** The wand's current orientation, changed only via shift-right-click; survives plane resets. */
-    public static Direction.Axis getAxis(ItemStack stack) {
+    /** The wand's current axis selection, changed only via the mirror-axes screen; survives plane resets. */
+    public static AxisSelection getAxes(ItemStack stack) {
         CustomData data = stack.get(DataComponents.CUSTOM_DATA);
-        if (data != null) {
-            Direction.Axis axis = Direction.Axis.byName(data.copyTag().getString(TAG_WAND_AXIS));
-            if (axis != null) {
-                return axis;
-            }
+        if (data == null) {
+            return AxisSelection.DEFAULT;
         }
-        return DEFAULT_AXIS;
+        CompoundTag tag = data.copyTag();
+        if (!tag.contains(TAG_WAND_MIRROR_X) && !tag.contains(TAG_WAND_MIRROR_Y) && !tag.contains(TAG_WAND_MIRROR_Z)) {
+            return AxisSelection.DEFAULT;
+        }
+        return readAxes(tag, TAG_WAND_MIRROR_X, TAG_WAND_MIRROR_Y, TAG_WAND_MIRROR_Z);
     }
 
-    public static void setAxis(ItemStack stack, Direction.Axis axis) {
+    public static void setAxes(ItemStack stack, AxisSelection axes) {
         stack.update(DataComponents.CUSTOM_DATA, CustomData.EMPTY, data -> {
             CompoundTag tag = data.copyTag();
-            tag.putString(TAG_WAND_AXIS, axis.getName());
+            writeAxes(tag, TAG_WAND_MIRROR_X, TAG_WAND_MIRROR_Y, TAG_WAND_MIRROR_Z, axes);
             return CustomData.of(tag);
         });
+    }
+
+    private static AxisSelection readAxes(CompoundTag tag, String xTag, String yTag, String zTag) {
+        return new AxisSelection(tag.getBoolean(xTag), tag.getBoolean(yTag), tag.getBoolean(zTag));
+    }
+
+    private static void writeAxes(CompoundTag tag, String xTag, String yTag, String zTag, AxisSelection axes) {
+        tag.putBoolean(xTag, axes.mirrorX());
+        tag.putBoolean(yTag, axes.mirrorY());
+        tag.putBoolean(zTag, axes.mirrorZ());
     }
 }
