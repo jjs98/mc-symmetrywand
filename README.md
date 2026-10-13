@@ -1,15 +1,14 @@
 # mc-symmetrywand
-A symmetrywand mod for Minecraft
+A Symmetry Wand mod for Minecraft
 
 ## Symmetry Wand
 
 A NeoForge mod (Minecraft 1.21.1) that adds a Symmetry Wand item for mirroring block
 placement and removal across a configurable plane.
 
-- Craft: Iron Ingot (top), Stick (middle), Ender Pearl (bottom) in a vertical line.
-- Right-click a block with the wand to set/move the symmetry plane, oriented along the
-  clicked face's axis.
-- Shift-right-click to cycle the plane's orientation (X -> Z -> Y -> X).
+- Craft: Ender Pearl (top), Iron Ingot (middle), Stick (bottom) in a vertical line.
+- Right-click a block with the wand to set/move the symmetry plane.
+- Shift-right-click to configure the symmetry plane.
 - Right-click air to reset/clear the plane.
 - The wand only needs to be carried in your inventory (not held) for mirroring of normal
   block placement/removal to apply; it must be held to set, reorient or reset the plane.
