@@ -19,6 +19,8 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.Half;
+import net.minecraft.world.level.block.state.properties.SlabType;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.level.BlockEvent;
@@ -84,6 +86,7 @@ public final class SymmetryEventHandler {
             }
 
             level.setBlockAndUpdate(mirrored, mirroredState);
+            updateConnections(level, mirrored);
         }
     }
 
@@ -203,6 +206,28 @@ public final class SymmetryEventHandler {
         if (state.hasProperty(BlockStateProperties.HORIZONTAL_FACING)) {
             state = state.setValue(BlockStateProperties.HORIZONTAL_FACING, transformFacing(state.getValue(BlockStateProperties.HORIZONTAL_FACING), mirror));
         }
+        // a diagonal swaps which horizontal axis a pillar (log, etc.) points along; applying both
+        // diagonals in the same combination is a 180 rotation, which leaves the axis unchanged
+        if (state.hasProperty(BlockStateProperties.AXIS) && mirror.diagonal() != mirror.antiDiagonal()) {
+            Direction.Axis axis = state.getValue(BlockStateProperties.AXIS);
+            if (axis != Direction.Axis.Y) {
+                state = state.setValue(BlockStateProperties.AXIS, axis == Direction.Axis.X ? Direction.Axis.Z : Direction.Axis.X);
+            }
+        }
+        if (mirror.axes().contains(Direction.Axis.Y)) {
+            if (state.hasProperty(BlockStateProperties.HALF)) {
+                Half half = state.getValue(BlockStateProperties.HALF);
+                state = state.setValue(BlockStateProperties.HALF, half == Half.TOP ? Half.BOTTOM : Half.TOP);
+            }
+            if (state.hasProperty(BlockStateProperties.SLAB_TYPE)) {
+                SlabType type = state.getValue(BlockStateProperties.SLAB_TYPE);
+                if (type == SlabType.TOP) {
+                    state = state.setValue(BlockStateProperties.SLAB_TYPE, SlabType.BOTTOM);
+                } else if (type == SlabType.BOTTOM) {
+                    state = state.setValue(BlockStateProperties.SLAB_TYPE, SlabType.TOP);
+                }
+            }
+        }
         return state;
     }
 
@@ -229,6 +254,20 @@ public final class SymmetryEventHandler {
             };
         }
         return facing;
+    }
+
+    /** Lets a just-placed mirrored block react to its actual neighbors (e.g. stair corner shapes,
+     * fence/wall/pane connections), since setBlockAndUpdate alone doesn't recompute those. */
+    private static void updateConnections(ServerLevel level, BlockPos pos) {
+        BlockState state = level.getBlockState(pos);
+        BlockState updated = state;
+        for (Direction dir : Direction.values()) {
+            BlockPos neighborPos = pos.relative(dir);
+            updated = updated.updateShape(dir, level.getBlockState(neighborPos), level, pos, neighborPos);
+        }
+        if (updated != state) {
+            level.setBlockAndUpdate(pos, updated);
+        }
     }
 
     private static void warn(ServerPlayer player, String message) {

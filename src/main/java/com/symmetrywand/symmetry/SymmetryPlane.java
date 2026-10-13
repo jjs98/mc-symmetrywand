@@ -4,7 +4,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -63,28 +62,21 @@ public record SymmetryPlane(AxisSelection axes, int sumX, int sumY, int sumZ) {
         return result;
     }
 
-    /** Same as {@link #mirroredPositions}, but merges duplicate target positions (and the
-     * reflections used to reach them) into one entry, and excludes {@code pos} itself. */
+    /** Same as {@link #mirroredPositions}, but keeps only the first combination reaching each
+     * target position and excludes {@code pos} itself. Different combinations that land on the
+     * same position are always algebraically the same overall transform (just expressed with
+     * different generators), so their axes/diagonal/antiDiagonal flags must NOT be unioned
+     * together - that would describe a different (usually wrong) transform, e.g. applying both
+     * diagonal and antiDiagonal when only one or the other actually happened. */
     public List<Mirror> distinctMirroredPositions(BlockPos pos) {
-        LinkedHashMap<BlockPos, MergedMirror> merged = new LinkedHashMap<>();
+        LinkedHashMap<BlockPos, Mirror> firstByPosition = new LinkedHashMap<>();
         for (Mirror mirror : mirroredPositions(pos)) {
             if (mirror.pos().equals(pos)) {
                 continue;
             }
-            MergedMirror entry = merged.computeIfAbsent(mirror.pos(), p -> new MergedMirror());
-            entry.axes.addAll(mirror.axes());
-            entry.diagonal |= mirror.diagonal();
-            entry.antiDiagonal |= mirror.antiDiagonal();
+            firstByPosition.putIfAbsent(mirror.pos(), mirror);
         }
-        List<Mirror> result = new ArrayList<>(merged.size());
-        merged.forEach((p, entry) -> result.add(new Mirror(p, new ArrayList<>(entry.axes), entry.diagonal, entry.antiDiagonal)));
-        return result;
-    }
-
-    private static final class MergedMirror {
-        final EnumSet<Direction.Axis> axes = EnumSet.noneOf(Direction.Axis.class);
-        boolean diagonal;
-        boolean antiDiagonal;
+        return new ArrayList<>(firstByPosition.values());
     }
 
     public BlockPos mirrorAxis(BlockPos pos, Direction.Axis axis) {
