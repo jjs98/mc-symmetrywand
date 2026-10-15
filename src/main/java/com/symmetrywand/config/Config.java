@@ -9,12 +9,12 @@ public final class Config {
     public static final ModConfigSpec.IntValue MAX_RANGE = BUILDER
             .comment("Maximum distance (in blocks) a symmetry plane may be anchored from the player, " +
                     "and the maximum distance mirrored block actions will reach from that anchor.")
-            .defineInRange("maxRange", 32, 1, 256);
+            .defineInRange("maxRange", 64, 1, 512);
 
     public static final ModConfigSpec.IntValue MAX_SELECTION_DISTANCE = BUILDER
             .comment("Maximum distance (in blocks) allowed between the two points clicked when setting " +
                     "a symmetry plane between them. If exceeded, the selection is canceled.")
-            .defineInRange("maxSelectionDistance", 16, 1, 256);
+            .defineInRange("maxSelectionDistance", 32, 1, 256);
 
     public static final ModConfigSpec.BooleanValue MIRROR_FACING = BUILDER
             .comment("Whether directional block states (e.g. furnaces, stairs, dispensers) have their " +
